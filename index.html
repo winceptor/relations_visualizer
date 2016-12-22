@@ -1,0 +1,454 @@
+<html>
+<head>
+	<meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+	
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.17.0/vis.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.17.0/vis.min.css" rel="stylesheet" type="text/css" />
+
+    <style type="text/css">
+		#myloader {
+			position: absolute;
+			z-index: 3;
+			background-color: white;
+		}
+        #mynetwork, #myimage {
+			z-index: 1;
+			position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 0px solid lightgray;
+			background-color: white;
+        }
+		#myimage {
+			z-index: 2;
+			background-color: white;
+			display: none;
+		}
+		#canvasImg {
+			width: 100%;
+            height: 100%;
+		}
+		#mycsv {
+			float: left;
+        }
+		.links {
+			float: right;
+			padding: 5px;
+        }
+		body, html {
+			margin: 0;
+			/* overflow: hidden; */
+			background-color: grey;
+		}
+    </style>
+</head>
+<body>
+
+<div id="myloader">
+	<input type="file" id="mycsv" accept=".csv">
+	<a class="links" href="#" onclick="loadlocalcsv()" alt="Load stored CSV data." style="color: blue;">LOAD_STORED</a>
+	<a class="links" href="#" id="downloader" onclick="canvastopng()" alt="Pause as PNG image of canvas." style="color: green;">TOGGLE_PAUSE</a>
+</div>
+<div id="mynetwork"></div>
+<div id="myimage"><img id="canvasImg" alt="Right click to save me!"></div>
+
+<script type="text/javascript">
+
+	function mergeSort(arr)
+	{
+		if (arr.length < 2)
+			return arr;
+
+		var middle = parseInt(arr.length / 2);
+		var left   = arr.slice(0, middle);
+		var right  = arr.slice(middle, arr.length);
+
+		return merge(mergeSort(left), mergeSort(right));
+	}
+
+	function merge(left, right)
+	{
+		var result = [];
+
+		while (left.length && right.length) {
+			if (left[0][1] >= right[0][1]) {
+				result.push(left.shift());
+			} else {
+				result.push(right.shift());
+			}
+		}
+
+		while (left.length)
+			result.push(left.shift());
+
+		while (right.length)
+			result.push(right.shift());
+
+		return result;
+	}
+
+	var toggled = false;
+	var canvastopng = function(){
+		var canvas = document.querySelector('canvas');
+		
+		// save canvas image as data url (png format by default)
+		var dataURL = canvas.toDataURL();
+
+		// set canvasImg image src to dataURL
+		// so it can be saved as an image
+		document.getElementById('canvasImg').src = dataURL;
+		
+		if (toggled)
+		{
+			document.getElementById('myimage').style.display = "none";
+		}
+		else
+		{
+			document.getElementById('myimage').style.display = "block";
+		}
+		toggled = !toggled;
+		
+	};
+
+	var canvastopng00 = function(){
+		document.getElementById("downloader").download = "image.png";
+		document.getElementById("downloader").href = document.querySelector('canvas').toDataURL("image/png").replace(/^data:image\/[^;]/, 'data:application/octet-stream');
+	};
+	
+	var canvastopng0 = function() {
+		var canvas = document.querySelector('canvas');
+		var w = window.open('about:blank','image from canvas');
+		w.document.write("<img src='"+canvas.toDataURL("image/png")+"' alt='from canvas'/>");
+	};
+
+	var processcsv = function(csvdata) {
+		var rows = csvdata.split("\n");
+		//console.log("rows:" + rows.length);
+
+		
+		
+		var terms = [];
+		var termtypes = [];
+		for (var i=1; i<rows.length; i++)
+		{
+			var row = rows[i];
+			var term = row.split(",")[0];
+			
+			var rowbits = row.split(",");
+			
+			var termtypelist = "";
+			if (rowbits[2] && rowbits[2].length>0 && rowbits[2]=="X")
+			{
+				termtypelist += "1";
+			}
+			else
+			{
+				termtypelist += "0";
+			}
+			if (rowbits[3] && rowbits[3].length>0 && rowbits[3]=="X")
+			{
+				termtypelist += "1";
+			}
+			else
+			{
+				termtypelist += "0";
+			}
+			if (rowbits[4] && rowbits[4].length>0 && rowbits[4]=="X")
+			{
+				termtypelist += "1";
+			}
+			else
+			{
+				termtypelist += "0";
+			}
+			//termtypelist = termtypelist + (term[2] || "0") + (term[3] || "0") + (term[4] || "0");
+			termtypes.push(termtypelist);
+			terms.push(term);
+		}
+		//console.log(terms);
+		var nodecolors = {"100": "#D9EAD3", "010": "#FFF2CC", "001": "#F4CCCC", "110": "#E9ECCB", "101": "#E3D6CA", "011": "#F7DBC7", "111": "#9C9EC2"};
+		var nodecolors2 = {"100": "#B6D7A8", "010": "#FFE599", "001": "#EA9999", "110": "#D6DA9A", "101": "#C9B098", "011": "#F0B892", "111": "#8588BF"};
+		
+		var cols = rows[0].split(",");
+		//console.log("cols:" + cols.length);
+		var ids = [];
+		for (var i=5; i<cols.length; i++)
+		{
+			var col = cols[i];
+			//var id = row.split(",")[0];
+			ids.push(col);
+		}
+		//console.log(ids);
+		
+		
+		var relations = [];
+		for (var v=1; v<rows.length; v++)
+		{
+			var row = rows[v];
+			var cols = row.split(",");
+			var relationsrow = [];
+			for (var h=5; h<cols.length; h++)
+			{
+				var col = cols[h];
+				relationsrow.push(col);
+			}
+			relations.push(relationsrow);
+		}
+		//console.log(relations);
+		
+		
+		
+		var nodes = [];
+		var lines = [];
+		
+		var metarelations = [];
+		
+		var alternative = false;
+
+		for (var i=0; i<terms.length; i++)
+		{
+			var nodeid = i+1;
+			var nodelabel = terms[i];
+			var nodecolor = nodecolors[termtypes[i]] || '#999';
+			var nodecolor2 = nodecolors2[termtypes[i]] || '#666';
+			
+			var nodedata = {
+				id: nodeid, 
+				label: nodelabel, 
+				color: { border: nodecolor,
+					background: nodecolor,
+					highlight: {
+						border: nodecolor2,
+						background: nodecolor
+					},
+					hover: {
+						border: nodecolor2,
+						background: nodecolor
+					}
+				}
+			};
+
+			nodes.push(nodedata);
+			
+			var nullarray = new Array(terms.length).fill(0);
+			metarelations.push(nullarray);
+		}
+		
+		//console.log(metarelations);
+		
+		for (var v=0; v<relations.length; v++)
+		{
+			var relationterm = terms[v];
+			var relationtermtypes = termtypes[v];
+			var relationsrow = relations[v];
+			var nodeid = v+1;
+			for (var h=0; h<relationsrow.length; h++)
+			{
+				var relationid = ids[h];
+				
+				var rel = relationsrow[h];
+				
+				
+				if (rel=="1")
+				{
+				
+					for (var v0=0; v0<relations.length; v0++)
+					{
+						var relationtermtypes0 = termtypes[v0];
+						
+						var relationsrow0 = relations[v0];
+						
+						var rel0 = relationsrow0[h];
+						
+						
+						var nodeid0 = v0+1;
+						
+						var sametype = relationtermtypes==relationtermtypes0;
+						
+						var excluded = relationtermtypes=="010" || relationtermtypes=="100" || relationtermtypes=="001";
+						
+						if (rel0=="1" && v!=v0 && (!sametype || !excluded))
+						{
+							if ( metarelations[v][v0]==0)
+							{
+								metarelations[v][v0] = [relationid];
+							}
+							else
+							{
+								metarelations[v][v0].push(relationid);
+							}
+							var nodefrom = v+1;
+							var nodeto = v0+1;
+							var linedata = {from: nodefrom, to: nodeto, label: relationid};
+							//lines.push(linedata);
+						}
+					}	
+				}
+			
+			}
+		}
+		
+		var metametarel = {};
+		
+		for (var a=0;a<metarelations.length; a++)
+		{
+			var metarelations0 = metarelations[a];
+			for (var b=a;b<metarelations0.length; b++)
+			{
+				var rel = metarelations0[b];
+				if (rel!=0)
+				{
+					var nodefrom = a+1;
+					var nodeto = b+1;
+					//var rel0 = rel.join("+");
+
+ 	for (var r in rel)
+		{
+var rel0 = rel[r];
+					var linedata = {from: nodefrom, to: nodeto, label: rel0};
+					lines.push(linedata);
+var relationterm1 = terms[a];
+metametarel[relationterm1] =  metametarel[relationterm1] || 0;
+
+metametarel[relationterm1] = metametarel[relationterm1] +1;
+
+var relationterm2 = terms[b];
+metametarel[relationterm2] =  metametarel[relationterm2] || 0;
+
+metametarel[relationterm2] = metametarel[relationterm2] +1;
+				}
+}
+			}
+		}
+		
+		var metametametarel = [];
+		for (var key in metametarel)
+		{
+			var value = metametarel[key];
+			metametametarel.push([key, value]);
+		}
+		
+		var sortedlineslist = mergeSort(metametametarel);
+		//console.log(nodes);
+
+		console.log("NODES TOTAL: \n " + nodes.length);
+		console.log("LINES TOTAL: \n " + lines.length);
+		
+		//console.log(sortedlineslist);
+		
+		var csvstring = "";
+		for (var key in sortedlineslist)
+		{
+			var value = sortedlineslist[key];
+			csvstring += value.join(","); 
+			csvstring += "\n"; 
+		}
+		
+		console.log("CSV DATA: \n" + csvstring);
+		
+		
+		//drawnetwork(nodes, lines);
+		var proceedtodraw = confirm("Drawing network graph with: \n\t" + nodes.length + " nodes\n\t" + lines.length + " connections\nProceed?" );
+		if (proceedtodraw) 
+		{
+			drawnetwork(nodes, lines);
+		}
+	};
+	
+	var fileInput = document.getElementById("mycsv"),
+
+		readFile = function () {
+			var reader = new FileReader();
+			reader.onload = function () {
+				//document.getElementById('out').innerHTML = reader.result;
+				processcsv(reader.result);
+			};
+			// start reading the file. When it is done, calls the onload event defined above.
+			reader.readAsBinaryString(fileInput.files[0]);
+		};
+
+	fileInput.addEventListener('change', readFile);
+
+	
+	var loadlocalcsv = function() {
+		var csvfile = new XMLHttpRequest();
+		csvfile.open("GET", "data.csv", true);
+		csvfile.send();
+
+		csvfile.onreadystatechange = function(){
+		  if (csvfile.readyState== 4 && csvfile.status == 200){
+			processcsv(csvfile.responseText);
+		  }
+		}
+			
+		/*$.ajax({
+			url:'data.csv',
+			success: function (data){
+				processcsv(data);
+			}
+		});*/
+	}
+
+	var drawnetwork = function(nodes, lines) {
+		var nodedata = [
+			{id: 1, label: 'Node 1'},
+			{id: 2, label: 'Node 2'},
+			{id: 3, label: 'Node 3'},
+			{id: 4, label: 'Node 4'},
+			{id: 5, label: 'Node 5'}
+		];
+		var linedata = [
+			{from: 1, to: 3, label: 'Label 1'},
+			{from: 1, to: 2, label: 'Label 2'},
+			{from: 2, to: 4, label: 'Label 3'},
+			{from: 2, to: 5, label: 'Label 4'}
+		];
+		
+		if (nodes)
+		{
+			nodedata = nodes;
+		}
+		if (lines)
+		{
+			linedata = lines;
+		}
+		
+		// create an array with nodes
+		var nodes = new vis.DataSet(nodedata);
+
+		// create an array with edges
+		var edges = new vis.DataSet(linedata);
+
+		// create a network
+		var container = document.getElementById('mynetwork');
+
+		// provide the data in the vis format
+		var data = {
+			nodes: nodes,
+			edges: edges
+		};
+		
+		var edgeoptions = {
+			color: {opacity: 0.9}
+		};
+		
+		var nodeoptions = { 
+			font: {size: 36},
+			mass: 6
+		};
+		
+		var layoutoptions = {improvedLayout: false};
+		
+		var options = {edges: edgeoptions, nodes: nodeoptions, layout: layoutoptions};
+
+		
+		
+		// initialize your network!
+		var network = new vis.Network(container, data, options);
+	
+	};
+</script>
+</body>
+</html>
